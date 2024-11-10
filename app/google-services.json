@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "481531309825",
+    "firebase_url": "https://uitpay-6021c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "uitpay-6021c",
+    "storage_bucket": "uitpay-6021c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:481531309825:android:494c99e82fa8eced3b7500",
+        "android_client_info": {
+          "package_name": "com.example.uitpay"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5nHRTrwGOEiQnOyBJYrRQGRmwfU38-eM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
