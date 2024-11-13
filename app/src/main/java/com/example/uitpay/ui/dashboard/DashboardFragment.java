@@ -18,6 +18,10 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.text.Html;
+import android.util.TypedValue;
+import android.view.Gravity;
+import androidx.appcompat.app.AlertDialog;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
@@ -26,6 +30,8 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.navigation.NavController;
+import androidx.navigation.Navigation;
 
 import com.example.uitpay.R;
 import com.example.uitpay.databinding.FragmentDashboardBinding;
@@ -81,6 +87,8 @@ public class DashboardFragment extends Fragment {
             visibility -> binding.muahangImage.setVisibility(visibility));
         dashboardViewModel.getSummaryLayoutVisibility().observe(getViewLifecycleOwner(),
             visibility -> binding.summaryLayout.setVisibility(visibility));
+        dashboardViewModel.getRecyclerViewVisibility().observe(getViewLifecycleOwner(),
+            visibility -> binding.productsRecyclerView.setVisibility(visibility));
 
         dashboardViewModel.getTotalQuantity().observe(getViewLifecycleOwner(), quantity -> 
             binding.productCountText.setText("Số lượng sản phẩm: " + quantity));
@@ -88,21 +96,79 @@ public class DashboardFragment extends Fragment {
         dashboardViewModel.getTotalPrice().observe(getViewLifecycleOwner(), price -> 
             binding.totalPriceText.setText(String.format("Tổng tiền: %.0f VND", price)));
 
+        dashboardViewModel.getRecheckStatusText().observe(getViewLifecycleOwner(),
+            text -> binding.textDashboard.setText(text));
+
+        dashboardViewModel.getPaymentInfoText().observe(getViewLifecycleOwner(),
+            text -> {
+                if (text != null) {
+                    binding.textDashboard.setText(Html.fromHtml(text, Html.FROM_HTML_MODE_COMPACT));
+                    binding.textDashboard.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+                    binding.textDashboard.setGravity(Gravity.CENTER);
+                    binding.textDashboard.setPadding(16, 32, 16, 32);
+                }
+            });
+
         testButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (nfcAdapter == null) {
-                    Toast.makeText(requireContext(), 
-                        "Thiết bị của bạn không hỗ trợ NFC", 
-                        Toast.LENGTH_LONG).show();
-                    return;
-                }
-
-                if (!nfcAdapter.isEnabled()) {
-                    showNFCSettings();
-                } else {
-                    dashboardViewModel.moveToNextStage();
-                    dashboardViewModel.writeInitialData();
+                Integer stage = dashboardViewModel.getCurrentStage().getValue();
+                if (stage != null) {
+                    if (stage == 1) {
+                        if (nfcAdapter == null) {
+                            Toast.makeText(requireContext(), 
+                                "Thiết bị của bạn không hỗ trợ NFC", 
+                                Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (!nfcAdapter.isEnabled()) {
+                            showNFCSettings();
+                        } else {
+                            dashboardViewModel.moveToNextStage();
+                            dashboardViewModel.writeInitialData();
+                        }
+                    } else if (stage == 2) {
+                        dashboardViewModel.finishShopping();
+                        dashboardViewModel.listenToCheckStatus();
+                    } else if (stage == 3) {
+                        Boolean isChecked = dashboardViewModel.getIsChecked().getValue();
+                        if (isChecked != null && !isChecked) {
+                            Toast.makeText(requireContext(),
+                                "Đơn hàng vẫn chưa được Recheck",
+                                Toast.LENGTH_SHORT).show();
+                        } else {
+                            String buttonText = dashboardViewModel.getButtonText().getValue();
+                            if (buttonText.equals("Hoàn thành recheck")) {
+                                // Khi nhấn "Hoàn thành recheck"
+                                dashboardViewModel.showPaymentInfo();
+                            } else if (buttonText.equals("Thanh toán")) {
+                                // Khi nhấn "Thanh toán"
+                                DatabaseReference userRef = dashboardViewModel.getDatabaseRef().child("phampho1103");
+                                userRef.child("totalprice").get().addOnCompleteListener(task -> {
+                                    if (task.isSuccessful()) {
+                                        Double totalPrice = task.getResult().getValue(Double.class);
+                                        if (totalPrice != null) {
+                                            AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
+                                            builder.setMessage(String.format("Bạn có xác nhận thanh toán số tiền %,.0f VND?", totalPrice))
+                                                   .setPositiveButton("Đồng ý", (dialog, id) -> {
+                                                       dashboardViewModel.processPayment(requireContext(), dialog);
+                                                   })
+                                                   .setNegativeButton("Từ chối", (dialog, id) -> {
+                                                       dialog.dismiss();
+                                                   });
+                                            builder.create().show();
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    } else if (stage == 4) {
+                        // Reset Dashboard và chuyển về Home
+                        dashboardViewModel.resetDashboard();
+                        // Chuyển về trang Home
+                        NavController navController = Navigation.findNavController(requireActivity(), R.id.nav_host_fragment_activity_main);
+                        navController.navigate(R.id.navigation_home);
+                    }
                 }
             }
         });
@@ -120,30 +186,23 @@ public class DashboardFragment extends Fragment {
         productsRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                List<Product> productList = new ArrayList<>();
-                for (DataSnapshot child : snapshot.getChildren()) {
-                    String productId = child.child("productId").getValue(String.class);
-                    String name = child.child("name").getValue(String.class);
-                    Integer quantity = child.child("quantity").getValue(Integer.class);
-                    Double price = child.child("price").getValue(Double.class);
-                    String productImage = child.child("productImage").getValue(String.class);
+                for (DataSnapshot productSnapshot : snapshot.getChildren()) {
+                    Product product = new Product();
+                    product.setProductId(productSnapshot.child("productId").getValue(String.class));
+                    product.setName(productSnapshot.child("name").getValue(String.class));
+                    product.setPrice(productSnapshot.child("price").getValue(Double.class));
+                    product.setQuantity(productSnapshot.child("quantity").getValue(Integer.class));
+                    product.setProductImage(productSnapshot.child("productImage").getValue(String.class));
+                    product.setOrigin(productSnapshot.child("origin").getValue(String.class));
+                    product.setDescription(productSnapshot.child("description").getValue(String.class));
                     
-                    if (productId != null && name != null) {
-                        Product product = new Product();
-                        product.setProductId(productId);
-                        product.setName(name);
-                        product.setQuantity(quantity != null ? quantity : 1);
-                        product.setPrice(price != null ? price : 0.0);
-                        product.setProductImage(productImage);
-                        productList.add(product);
-                    }
+                    productAdapter.addOrUpdateProduct(product);
                 }
-                productAdapter.setProducts(productList);
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("DashboardFragment", "Lỗi đọc database: " + error.getMessage());
+                Log.e("DashboardFragment", "Lỗi đọc dữ liệu: " + error.getMessage());
             }
         });
 

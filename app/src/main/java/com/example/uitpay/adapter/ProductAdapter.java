@@ -10,6 +10,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
@@ -48,6 +49,10 @@ public class ProductAdapter extends RecyclerView.Adapter<ProductAdapter.ProductV
     @Override
     public void onBindViewHolder(@NonNull ProductViewHolder holder, int position) {
         Product product = products.get(position);
+        
+        // Thêm click listener cho imageView
+        holder.imageView.setOnClickListener(v -> showProductDetail(product));
+        
         holder.nameTextView.setText(product.getName());
         holder.priceTextView.setText(String.format("%,.0f VND", product.getPrice()));
         holder.quantityTextView.setText("Số lượng: " + product.getQuantity());
@@ -115,6 +120,36 @@ public class ProductAdapter extends RecyclerView.Adapter<ProductAdapter.ProductV
                     Log.e("ProductAdapter", "Lỗi truy vấn database: " + error.getMessage());
                 }
             });
+    }
+
+    private void showProductDetail(Product product) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        View dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_product_detail, null);
+
+        ImageView productImage = dialogView.findViewById(R.id.detail_product_image);
+        TextView nameText = dialogView.findViewById(R.id.detail_product_name);
+        TextView priceText = dialogView.findViewById(R.id.detail_product_price);
+        TextView originText = dialogView.findViewById(R.id.detail_product_origin);
+        TextView descriptionText = dialogView.findViewById(R.id.detail_product_description);
+
+        // Load ảnh sản phẩm
+        if (product.getProductImage() != null) {
+            Glide.with(context)
+                .load(product.getProductImage())
+                .into(productImage);
+        }
+
+        // Set các thông tin khác
+        nameText.setText("Tên sản phẩm: " + (product.getName() != null ? product.getName() : ""));
+        priceText.setText(String.format("Giá: %,.0f VND", product.getPrice()));
+        originText.setText("Xuất xứ: " + (product.getOrigin() != null ? product.getOrigin() : ""));
+        descriptionText.setText("Mô tả: " + (product.getDescription() != null ? product.getDescription() : ""));
+
+        builder.setView(dialogView)
+               .setNegativeButton("Thoát", (dialog, id) -> dialog.dismiss());
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
     }
 
     static class ProductViewHolder extends RecyclerView.ViewHolder {
